@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gazette Metadata Workbench</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Gazette Metadata Workbench</h1>
+  <div class="sub" id="sub">loading&hellip;</div>
+  <div class="kpis" id="kpis"></div>
+</header>
+
+<nav class="tabs">
+  <div class="tab on" data-t="overview">Overview</div>
+  <div class="tab" data-t="rows">Archive.org rows</div>
+  <div class="tab" data-t="scc">SCC tree</div>
+  <div class="tab" data-t="link">SCC Acts in archive.org</div>
+  <div class="tab" data-t="about">Notes</div>
+</nav>
+
+<!-- OVERVIEW -->
+<section class="pane on" id="t-overview"></section>
+
+<!-- ROW BROWSER -->
+<section class="pane" id="t-rows">
+  <div class="bar">
+    <select id="f-pub"></select>
+    <select id="f-year"><option value="">all years</option></select>
+    <select id="f-type"><option value="">any type</option><option value="e">extraordinary</option><option value="w">weekly</option></select>
+    <input type="search" id="f-q" placeholder="filter loaded rows: subject, ministry, identifier&hellip;">
+    <label class="chk"><input type="checkbox" id="f-min"> has ministry</label>
+    <label class="chk"><input type="checkbox" id="f-gid"> has Gazette ID</label>
+    <button id="f-csv">Download filtered CSV</button>
+    <span class="hint" id="f-hint"></span>
+  </div>
+  <div class="note">Pick a publisher, then a year. Only the shard for that choice is downloaded. &ldquo;all years&rdquo; loads every year for that publisher (can be large).</div>
+  <div id="rows-out"></div>
+</section>
+
+<!-- SCC TREE -->
+<section class="pane" id="t-scc">
+  <div class="bar">
+    <input type="search" id="s-q" placeholder="search the SCC tree (3+ letters), e.g. foreign exchange management">
+    <select id="s-sec"><option value="">all sections</option></select>
+    <span class="hint" id="s-hint"></span>
+  </div>
+  <div id="scc-out"></div>
+</section>
+
+<!-- LINK VIEW -->
+<section class="pane" id="t-link">
+  <div class="bar">
+    <input type="search" id="l-q" placeholder="filter SCC Acts that appear in archive.org rows">
+    <select id="l-tier"><option value="">both tiers</option><option>EXACT</option><option>PHRASE</option></select>
+    <span class="hint" id="l-hint"></span>
+  </div>
+  <div class="split">
+    <div class="col" id="l-list"></div>
+    <div class="col" id="l-detail"><div class="empty">Select an Act on the left to see the archive.org rows that mention it.</div></div>
+  </div>
+</section>
+
+<section class="pane" id="t-about"></section>
+
+<script src="app.js"></script>
+</body>
+</html>
