@@ -15,6 +15,7 @@
 
 <nav class="tabs">
   <div class="tab on" data-t="overview">Overview</div>
+  <div class="tab" data-t="eg">eGazette: Part &amp; Section</div>
   <div class="tab" data-t="rows">Archive.org rows</div>
   <div class="tab" data-t="scc">SCC tree</div>
   <div class="tab" data-t="link">SCC Acts in archive.org</div>
@@ -23,6 +24,23 @@
 
 <!-- OVERVIEW -->
 <section class="pane on" id="t-overview"></section>
+
+<!-- EGAZETTE PART & SECTION -->
+<section class="pane" id="t-eg">
+  <div id="eg-top"></div>
+  <div class="bar">
+    <select id="e-ps"></select>
+    <select id="e-year"><option value="">all years</option></select>
+    <select id="e-cat"><option value="">any category</option><option>Extra Ordinary</option><option>Weekly</option></select>
+    <input type="search" id="e-q" placeholder="filter loaded rows: subject, ministry, department, gazette id&hellip;">
+    <label class="chk"><input type="checkbox" id="e-pdf"> has PDF link</label>
+    <label class="chk"><input type="checkbox" id="e-real"> real ministry only</label>
+    <button id="e-csv">Download filtered CSV</button>
+    <span class="hint" id="e-hint"></span>
+  </div>
+  <div class="note" id="e-note"></div>
+  <div id="e-out"></div>
+</section>
 
 <!-- ROW BROWSER -->
 <section class="pane" id="t-rows">
