@@ -218,7 +218,7 @@ function drawEgTop(){
   const mx=Math.max(...EG.parts.flatMap(p=>decs.map(d=>Object.entries(p.years).filter(([y])=>y.slice(0,3)+'0'===d).reduce((a,[,n])=>a+n,0))));
   let h=`<div class="note"><b>${nf(EG.rows)}</b> gazettes collected from egazette.gov.in's own Part &amp; Section listing`+
    (EG.expected?` of ${nf(EG.expected)} the site reports (${(EG.rows/EG.expected*100).toFixed(1)}%)`:'')+
-   `. ${EG.complete?'':'<b>Harvest still being repaired, so counts will rise.</b> '}Metadata only, no PDFs. Built ${esc(EG.built)}.</div>`;
+   `. Harvest finished${EG.expected&&EG.rows<EG.expected?`; <b>${nf(EG.expected-EG.rows)} listed rows were not retrievable</b> (the site's pager hides the tail of large result sets, and old gazettes with identical dates, ministry, subject and size merge into one row)`:''}. Metadata only, no PDFs. Built ${esc(EG.built)}.</div>`;
   h+='<h3>Part &amp; Section by decade <span class="q">click a row to browse it</span></h3><div style="overflow:auto"><table><thead><tr><th>Part &amp; Section</th><th class="n">Gazettes</th><th class="n">Site total</th>'+decs.map(d=>`<th class="n">${d==='?'?'?':d+'s'}</th>`).join('')+
    '<th class="n">Ministry</th><th class="n">PDF link</th></tr></thead><tbody>';
   EG.parts.forEach(p=>{
