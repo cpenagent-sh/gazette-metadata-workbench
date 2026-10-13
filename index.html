@@ -32,14 +32,17 @@
     <select id="e-ps"></select>
     <select id="e-year"><option value="">all years</option></select>
     <select id="e-cat"><option value="">any category</option><option>Extra Ordinary</option><option>Weekly</option></select>
-    <input type="search" id="e-q" placeholder="filter loaded rows: subject, ministry, department, gazette id&hellip;">
-    <label class="chk"><input type="checkbox" id="e-pdf"> has PDF link</label>
+    <input type="search" id="e-q" placeholder="filter loaded rows: title, subject, ministry, gazette number, ID&hellip;">
+    <label class="chk"><input type="checkbox" id="e-pdf"> hosted PDF available</label>
     <label class="chk"><input type="checkbox" id="e-real"> real ministry only</label>
     <button id="e-csv">Download filtered CSV</button>
     <span class="hint" id="e-hint"></span>
   </div>
   <div class="note" id="e-note"></div>
-  <div id="e-out"></div>
+  <div class="eg-workspace">
+    <div class="eg-results" id="e-out"></div>
+    <aside class="eg-preview" id="e-preview"><div class="empty">Choose a gazette row to see all its metadata and open its PDF beside the list.</div></aside>
+  </div>
 </section>
 
 <!-- ROW BROWSER -->

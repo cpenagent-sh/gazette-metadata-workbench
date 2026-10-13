@@ -70,3 +70,17 @@ tr:hover td{background:#1b1f28}
 .rowcard .s{font-size:12.5px}
 .rowcard .m{color:var(--dim);font-size:11.5px}
 @media(max-width:860px){.split{grid-template-columns:1fr}input[type=search]{min-width:200px}.bc .lab{width:130px;flex-basis:130px}}
+.eg-workspace{display:grid;grid-template-columns:minmax(380px,45%) minmax(430px,55%);gap:14px;align-items:start}
+.eg-results{max-height:80vh;overflow:auto;min-width:0}
+.eg-results td{max-width:320px;overflow:hidden;text-overflow:ellipsis}
+.eg-results td .crumb{max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.eg-result{cursor:pointer}
+.eg-result:hover td,.eg-result.selected td{background:var(--panel2)}
+.eg-preview{position:sticky;top:8px;max-height:80vh;overflow:auto;min-width:0;border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--panel)}
+.eg-preview h3{margin:0 0 8px}
+.eg-links{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px}
+.eg-details{display:grid;grid-template-columns:130px minmax(0,1fr);gap:5px 9px;max-height:155px;overflow:auto;border:1px solid var(--line);padding:8px;margin:0 0 10px;font-size:12px}
+.eg-details dt{color:var(--dim);text-transform:capitalize}
+.eg-details dd{margin:0;overflow-wrap:anywhere}
+.eg-pdf{width:100%;height:55vh;border:1px solid var(--line);background:#fff}
+@media(max-width:860px){.eg-workspace{grid-template-columns:1fr}.eg-preview{position:static;max-height:none}.eg-results{max-height:55vh}}

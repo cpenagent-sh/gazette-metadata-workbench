@@ -199,7 +199,7 @@ $('l-list').addEventListener('click',async e=>{
 });
 
 /* ---------------- eGazette Part & Section ---------------- */
-let EG=null,EGC={},EGROWS=[],EGBOOT=false;
+let EG=null,EGC={},EGROWS=[],EGBOOT=false,EGSELECTED=null,EGLOAD=0;
 const MULTI=/^(this gazette may|not applicable)/i;
 async function initEg(){
   if(EGBOOT)return; EGBOOT=true;
@@ -212,23 +212,22 @@ async function initEg(){
   ['e-cat','e-pdf','e-real'].forEach(id=>$(id).onchange=drawEg);
   $('e-q').oninput=()=>{clearTimeout(window.__e);window.__e=setTimeout(drawEg,200)};
   $('e-csv').onclick=egCsv;
+  drawAbout();
 }
 function drawEgTop(){
   const decs=[...new Set(EG.parts.flatMap(p=>Object.keys(p.years).map(y=>/^\d{4}$/.test(y)?y.slice(0,3)+'0':'?')))].sort();
   const mx=Math.max(...EG.parts.flatMap(p=>decs.map(d=>Object.entries(p.years).filter(([y])=>y.slice(0,3)+'0'===d).reduce((a,[,n])=>a+n,0))));
-  let h=`<div class="note"><b>${nf(EG.rows)}</b> gazettes collected from egazette.gov.in's own Part &amp; Section listing`+
-   (EG.expected?` of ${nf(EG.expected)} the site reports (${(EG.rows/EG.expected*100).toFixed(1)}%)`:'')+
-   `. Harvest finished${EG.expected&&EG.rows<EG.expected?`; <b>${nf(EG.expected-EG.rows)} listed rows were not retrievable</b> (the site's pager hides the tail of large result sets, and old gazettes with identical dates, ministry, subject and size merge into one row)`:''}. Metadata only, no PDFs. Built ${esc(EG.built)}.</div>`;
-  h+='<h3>Part &amp; Section by decade <span class="q">click a row to browse it</span></h3><div style="overflow:auto"><table><thead><tr><th>Part &amp; Section</th><th class="n">Gazettes</th><th class="n">Site total</th>'+decs.map(d=>`<th class="n">${d==='?'?'?':d+'s'}</th>`).join('')+
+  let h=`<div class="note"><b>${nf(EG.rows)}</b> distinct records from the supplied ${esc(EG.source)} (not the earlier incomplete scraper extract). ${nf(EG.shards)} on-demand shards. PDF files are not hosted by this site. Built ${esc(EG.built)}.</div>`;
+  h+='<h3>Part &amp; Section by decade <span class="q">click a row to browse it</span></h3><div style="overflow:auto"><table><thead><tr><th>Part &amp; Section</th><th class="n">Gazettes</th>'+decs.map(d=>`<th class="n">${d==='?'?'?':d+'s'}</th>`).join('')+
    '<th class="n">Ministry</th><th class="n">PDF link</th></tr></thead><tbody>';
   EG.parts.forEach(p=>{
-    h+=`<tr class="egrow" data-k="${esc(p.key)}" style="cursor:pointer"><td>${esc(p.name)}<div class="crumb">${esc(p.desc)}</div></td><td class="n">${nf(p.rows)}</td><td class="n">${p.expected?nf(p.expected):''}</td>`;
+    h+=`<tr class="egrow" data-k="${esc(p.key)}" style="cursor:pointer"><td>${esc(p.name)}<div class="crumb">${esc(p.desc)}</div></td><td class="n">${nf(p.rows)}</td>`;
     decs.forEach(d=>{
       const n=Object.entries(p.years).filter(([y])=>(/^\d{4}$/.test(y)?y.slice(0,3)+'0':'?')===d).reduce((a,[,v])=>a+v,0);
       const a=n?Math.min(.9,.12+.78*Math.sqrt(n/mx)):0;
       h+=`<td class="n" style="background:rgba(47,129,247,${a.toFixed(2)})">${n?nf(n):''}</td>`;
     });
-    h+=`<td class="n">${heat(p.fill.ministry||0)}</td><td class="n">${heat(p.fill.pdf||0)}</td></tr>`;
+    h+=`<td class="n">${heat(p.fill.ministry||0)}</td><td class="n">${heat(p.fill.stored_pdf_url||0)}</td></tr>`;
   });
   h+='</tbody></table></div>';
   $('eg-top').innerHTML=h;
@@ -237,40 +236,63 @@ function drawEgTop(){
 function egYears(){
   const p=EG.parts.find(x=>x.key===$('e-ps').value);
   $('e-year').innerHTML='<option value="">all years</option>'+(p?Object.entries(p.years).map(([y,n])=>`<option value="${esc(y)}">${esc(y)} (${nf(n)})</option>`).join(''):'');
-  $('e-note').textContent=p?p.desc+(p.expected?` · site lists ${nf(p.expected)}, we hold ${nf(p.rows)}`:''):'';
+  if(p&&p.rows>20000)$('e-year').value=Object.keys(p.years).sort().at(-1);
+  $('e-note').textContent=p?p.desc+` · ${nf(p.rows)} distinct CSV records`:'';
 }
 async function egLoad(){
-  const pk=$('e-ps').value,yr=$('e-year').value;
+  const request=++EGLOAD, pk=$('e-ps').value,yr=$('e-year').value;
+  EGSELECTED=null;
+  $('e-preview').innerHTML='<div class="empty">Choose a gazette row to see its metadata and PDF.</div>';
   if(!pk){EGROWS=[];drawEg();return}
   const p=EG.parts.find(x=>x.key===pk),ys=yr?[yr]:Object.keys(p.years);
   $('e-hint').textContent='loading '+ys.length+' shard'+(ys.length>1?'s':'')+'…';
-  const parts=await Promise.all(ys.map(y=>shard(`data/eg/${pk}__${y}.json`).catch(()=>[])));
+  let parts;
+  try{parts=await Promise.all(ys.map(y=>shard(`data/eg/${pk}__${y}.json`)))}
+  catch(e){if(request===EGLOAD)$('e-hint').textContent='Could not load data: '+e.message;return}
+  if(request!==EGLOAD)return;
   EGROWS=[].concat(...parts);drawEg();
 }
 function egFiltered(){
   const q=$('e-q').value.trim().toLowerCase(),cat=$('e-cat').value,pdf=$('e-pdf').checked,real=$('e-real').checked;
   return EGROWS.filter(r=>{
     if(cat&&r[EGC.category]!==cat)return false;
-    if(pdf&&!r[EGC.pdf])return false;
+    if(pdf&&!r[EGC.stored_pdf_url])return false;
     if(real&&(!r[EGC.ministry]||MULTI.test(r[EGC.ministry])))return false;
-    if(q&&!(r[EGC.subject]+' '+r[EGC.ministry]+' '+r[EGC.department]+' '+r[EGC.gazette_id]).toLowerCase().includes(q))return false;
+    if(q&&!["title","subject","ministry","department","office","gazette_id","gazette_number","id"].some(k=>String(r[EGC[k]]).toLowerCase().includes(q)))return false;
     return true});
 }
 function drawEg(){
-  if(!EGROWS.length){$('e-out').innerHTML='<div class="empty">Pick a Part &amp; Section above (or click a row in the table).</div>';$('e-hint').textContent='';return}
+  if(!EGROWS.length){$('e-out').innerHTML='<div class="empty">'+(EG.parts.find(x=>x.key===$('e-ps').value)?'No rows match these filters.':'Pick a Part &amp; Section above (or click a row in the table).')+'</div>';$('e-hint').textContent='';return}
   const f=egFiltered(),lim=1000;
-  let h='<table><thead><tr><th>Issue date</th><th>Published</th><th>Cat.</th><th>Ministry</th><th>Department</th><th>Subject</th><th>Gazette ID</th><th class="n">MB</th><th>PDF</th></tr></thead><tbody>';
+  let h='<table><thead><tr><th>Issue date</th><th>Gazette</th><th>Ministry</th><th>PDF</th></tr></thead><tbody>';
   f.slice(0,lim).forEach(r=>{
-    h+=`<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td><td>${r[2]==='Weekly'?'W':'EO'}</td><td class="clip" title="${esc(r[3])}">${esc(r[3])}</td><td class="clip">${esc(r[4])}</td>
-    <td class="clip" title="${esc(r[6])}">${esc(r[6])}</td><td class="mono">${esc(r[7])}</td><td class="n">${esc(r[8])}</td>
-    <td>${r[10]?`<a target="_blank" rel="noopener" href="https://egazette.gov.in/WriteReadData/${esc(r[10])}.pdf">link</a>`:''}</td></tr>`;
+    h+=`<tr class="eg-result${EGSELECTED===r[EGC.id]?' selected':''}" data-id="${esc(r[EGC.id])}" tabindex="0"><td class="mono">${esc(r[EGC.issued_at])}</td>
+    <td><strong>${esc(r[EGC.title])}</strong><div class="crumb">${esc(r[EGC.subject])}</div><div class="crumb">${esc(r[EGC.gazette_id]||r[EGC.gazette_number])}</div></td>
+    <td>${esc(r[EGC.ministry])}</td><td>${r[EGC.stored_pdf_url]?'●':r[EGC.pdf_url]?'○':'—'}</td></tr>`;
   });
   $('e-out').innerHTML=h+'</tbody></table>';
-  $('e-hint').textContent=`${nf(f.length)} of ${nf(EGROWS.length)} rows`+(f.length>lim?` (first ${nf(lim)} shown; CSV has all)`:'');
+  $('e-hint').textContent=`${nf(f.length)} of ${nf(EGROWS.length)} rows`+(f.length>lim?` (first ${nf(lim)} shown; narrow year/search or download CSV for all)`:'');
 }
+function egSelect(id){
+  const r=EGROWS.find(x=>x[EGC.id]===id);if(!r)return;
+  EGSELECTED=id;
+  document.querySelectorAll('.eg-result').forEach(x=>x.classList.toggle('selected',x.dataset.id===id));
+  const stored=r[EGC.stored_pdf_url],original=r[EGC.pdf_url];
+  const safe=u=>/^https:\/\/(?:storage\.googleapis\.com\/jurisphere-documents-pdfs\/egazette\/|egazette\.gov\.in\/WriteReadData\/)/i.test(u);
+  let h=`<h3>${esc(r[EGC.title])}</h3><div class="eg-links">`;
+  if(stored&&safe(stored))h+=`<a href="${esc(stored)}" target="_blank" rel="noopener noreferrer">Open hosted PDF ↗</a>`;
+  if(original&&safe(original))h+=`<a href="${esc(original)}" target="_blank" rel="noopener noreferrer">eGazette original ↗</a>`;
+  h+='</div>';
+  if(stored&&safe(stored))h+=`<iframe class="eg-pdf" title="PDF preview for ${esc(r[EGC.title])}" src="${esc(stored)}#toolbar=1" loading="lazy"></iframe>`;
+  else h+='<div class="empty">No hosted PDF for this record. Use the original eGazette link if available.</div>';
+  h+='<h3>All source metadata</h3><dl class="eg-details">'+EG.cols.map((k,i)=>`<dt>${esc(k.replaceAll('_',' '))}</dt><dd>${esc(r[i])||'—'}</dd>`).join('')+'</dl>';
+  $('e-preview').innerHTML=h;
+}
+$('e-out').addEventListener('click',e=>{const row=e.target.closest('.eg-result');if(row)egSelect(row.dataset.id)});
+$('e-out').addEventListener('keydown',e=>{if(e.key==='Enter'){const row=e.target.closest('.eg-result');if(row)egSelect(row.dataset.id)}});
 function egCsv(){
   const f=egFiltered(),q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
-  const csv=[EG.cols.join(',')].concat(f.map(r=>r.map(q).join(','))).join('\n');
+  const csv=[['part_section',...EG.cols].join(',')].concat(f.map(r=>[$('e-ps').selectedOptions[0].textContent.replace(/ \([\d,]+\)$/,''),...r].map(q).join(','))).join('\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
   a.download='egazette_'+($('e-ps').value||'all')+'.csv';a.click();
 }
@@ -281,6 +303,7 @@ function drawAbout(){
   <p>One place to look at all ${nf(ST.rows)} archive.org gazette metadata rows next to the SCC legislation tree, to decide which filters are worth using before downloading anything.</p>
   <h3>Sources</h3>
   <p><b>Archive.org rows:</b> metadata only, harvested from the <code>gazetteofindia</code> collection. No PDFs and no OCR text are stored here. Built ${esc(ST.built)}.<br>
+  <b>eGazette rows:</b> ${EG?nf(EG.rows)+' records from the supplied '+esc(EG.source):'loaded from the supplied CSV when you open its tab'}. Every source column is in the row detail and filtered CSV. The PDF pane embeds the supplied Google-hosted URL on demand. No PDF bytes are in this repository. A PDF may fail to render if its source blocks embedding; use Open hosted PDF in that case.<br>
   <b>SCC tree:</b> read live from the <a href="${esc(ST.scc_base)}" target="_blank" rel="noopener">Indian Legislation Explorer</a>'s public JSON. That site is separate and unchanged.</p>
   <h3>Things that will mislead you if you don't know them</h3>
   <p><b>Ministry, department and subject are not present for every publisher.</b> They are filled for the Union &ldquo;central&rdquo; items and Delhi, patchy for legacy Union items, and empty for most state mirrors. The Overview table shows fill rate per publisher.</p>
