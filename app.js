@@ -199,20 +199,22 @@ $('l-list').addEventListener('click',async e=>{
 });
 
 /* ---------------- eGazette Part & Section ---------------- */
-let EG=null,EGC={},EGROWS=[],EGBOOT=false,EGSELECTED=null,EGLOAD=0;
+let EG=null,EGC={},EGI={},EGROWS=[],EGGLOBAL=false,EGBOOT=false,EGSELECTED=null,EGLOAD=0,EGPAGE=0;
 const MULTI=/^(this gazette may|not applicable)/i;
 async function initEg(){
   if(EGBOOT)return; EGBOOT=true;
   try{EG=await jget('data/eg_stats.json')}catch(e){$('eg-top').innerHTML='<div class="empty">No eGazette data in this build.</div>';return}
   EG.cols.forEach((c,i)=>EGC[c]=i);
+  EG.index_cols.forEach((c,i)=>EGI[c]=i);
   drawEgTop();
-  $('e-ps').innerHTML='<option value="">choose a Part &amp; Section&hellip;</option>'+EG.parts.map(p=>`<option value="${esc(p.key)}">${esc(p.name)} (${nf(p.rows)})</option>`).join('');
+  $('e-ps').innerHTML='<option value="">All Parts &amp; Sections</option>'+EG.parts.map(p=>`<option value="${esc(p.key)}">${esc(p.name)} (${nf(p.rows)})</option>`).join('');
   $('e-ps').onchange=()=>{egYears();egLoad()};
   $('e-year').onchange=egLoad;
-  ['e-cat','e-pdf','e-real'].forEach(id=>$(id).onchange=drawEg);
-  $('e-q').oninput=()=>{clearTimeout(window.__e);window.__e=setTimeout(drawEg,200)};
+  ['e-cat','e-pdf','e-real'].forEach(id=>$(id).onchange=()=>{EGPAGE=0;drawEg()});
+  $('e-q').oninput=()=>{clearTimeout(window.__e);window.__e=setTimeout(()=>{EGPAGE=0;drawEg()},200)};
   $('e-csv').onclick=egCsv;
   drawAbout();
+  egYears();egLoad();
 }
 function drawEgTop(){
   const decs=[...new Set(EG.parts.flatMap(p=>Object.keys(p.years).map(y=>/^\d{4}$/.test(y)?y.slice(0,3)+'0':'?')))].sort();
@@ -235,48 +237,65 @@ function drawEgTop(){
 }
 function egYears(){
   const p=EG.parts.find(x=>x.key===$('e-ps').value);
-  $('e-year').innerHTML='<option value="">all years</option>'+(p?Object.entries(p.years).map(([y,n])=>`<option value="${esc(y)}">${esc(y)} (${nf(n)})</option>`).join(''):'');
+  const years=p?p.years:EG.index_years;
+  $('e-year').innerHTML='<option value="">all years</option>'+Object.entries(years).map(([y,n])=>`<option value="${esc(y)}">${esc(y)} (${nf(n)})</option>`).join('');
   if(p&&p.rows>20000)$('e-year').value=Object.keys(p.years).sort().at(-1);
-  $('e-note').textContent=p?p.desc+` · ${nf(p.rows)} distinct CSV records`:'';
+  $('e-note').textContent=p?p.desc+` · ${nf(p.rows)} distinct CSV records`:`All ${nf(EG.rows)} records, across every Part & Section. Search and category filters apply globally.`;
 }
 async function egLoad(){
   const request=++EGLOAD, pk=$('e-ps').value,yr=$('e-year').value;
   EGSELECTED=null;
+  EGPAGE=0;
   $('e-preview').innerHTML='<div class="empty">Choose a gazette row to see its metadata and PDF.</div>';
-  if(!pk){EGROWS=[];drawEg();return}
-  const p=EG.parts.find(x=>x.key===pk),ys=yr?[yr]:Object.keys(p.years);
-  $('e-hint').textContent='loading '+ys.length+' shard'+(ys.length>1?'s':'')+'…';
+  const p=EG.parts.find(x=>x.key===pk),ys=yr?[yr]:Object.keys(p?p.years:EG.index_years);
+  $('e-hint').textContent='loading '+ys.length+(pk?' section':' global index')+' shard'+(ys.length>1?'s':'')+'…';
   let parts;
-  try{parts=await Promise.all(ys.map(y=>shard(`data/eg/${pk}__${y}.json`)))}
+  try{parts=await Promise.all(ys.map(y=>shard(pk?`data/eg/${pk}__${y}.json`:`data/eg_index/${y}.json`)))}
   catch(e){if(request===EGLOAD)$('e-hint').textContent='Could not load data: '+e.message;return}
   if(request!==EGLOAD)return;
-  EGROWS=[].concat(...parts);drawEg();
+  EGGLOBAL=!pk;
+  EGROWS=[].concat(...parts);
+  if(EGGLOBAL)EGROWS.sort((a,b)=>b[EGI.issued_at].localeCompare(a[EGI.issued_at])||b[EGI.id].localeCompare(a[EGI.id]));
+  drawEg();
 }
 function egFiltered(){
   const q=$('e-q').value.trim().toLowerCase(),cat=$('e-cat').value,pdf=$('e-pdf').checked,real=$('e-real').checked;
   return EGROWS.filter(r=>{
-    if(cat&&r[EGC.category]!==cat)return false;
-    if(pdf&&!r[EGC.stored_pdf_url])return false;
-    if(real&&(!r[EGC.ministry]||MULTI.test(r[EGC.ministry])))return false;
-    if(q&&!["title","subject","ministry","department","office","gazette_id","gazette_number","id"].some(k=>String(r[EGC[k]]).toLowerCase().includes(q)))return false;
+    const C=EGGLOBAL?EGI:EGC;
+    if(cat&&r[C.category]!==cat)return false;
+    if(pdf&&!(EGGLOBAL?r[EGI.has_stored_pdf]:r[EGC.stored_pdf_url]))return false;
+    if(real&&(!r[C.ministry]||MULTI.test(r[C.ministry])))return false;
+    if(q&&!["title","subject","ministry","department","office","gazette_id","gazette_number","id"].some(k=>String(r[C[k]]).toLowerCase().includes(q)))return false;
     return true});
 }
 function drawEg(){
-  if(!EGROWS.length){$('e-out').innerHTML='<div class="empty">'+(EG.parts.find(x=>x.key===$('e-ps').value)?'No rows match these filters.':'Pick a Part &amp; Section above (or click a row in the table).')+'</div>';$('e-hint').textContent='';return}
-  const f=egFiltered(),lim=1000;
+  if(!EGROWS.length){$('e-out').innerHTML='<div class="empty">No rows in this selection.</div>';$('e-hint').textContent='0 rows';return}
+  const f=egFiltered(),lim=1000,start=EGPAGE*lim;
+  if(start>=f.length&&EGPAGE){EGPAGE=0;return drawEg()}
   let h='<table><thead><tr><th>Issue date</th><th>Gazette</th><th>Ministry</th><th>PDF</th></tr></thead><tbody>';
-  f.slice(0,lim).forEach(r=>{
-    h+=`<tr class="eg-result${EGSELECTED===r[EGC.id]?' selected':''}" data-id="${esc(r[EGC.id])}" tabindex="0"><td class="mono">${esc(r[EGC.issued_at])}</td>
-    <td><strong>${esc(r[EGC.title])}</strong><div class="crumb">${esc(r[EGC.subject])}</div><div class="crumb">${esc(r[EGC.gazette_id]||r[EGC.gazette_number])}</div></td>
-    <td>${esc(r[EGC.ministry])}</td><td>${r[EGC.stored_pdf_url]?'●':r[EGC.pdf_url]?'○':'—'}</td></tr>`;
+  f.slice(start,start+lim).forEach(r=>{
+    const C=EGGLOBAL?EGI:EGC;
+    h+=`<tr class="eg-result${EGSELECTED===r[C.id]?' selected':''}" data-id="${esc(r[C.id])}" tabindex="0"><td class="mono">${esc(r[C.issued_at])}</td>
+    <td><strong>${esc(r[C.title])}</strong><div class="crumb">${esc(r[C.subject])}</div><div class="crumb">${esc(r[C.gazette_id]||r[C.gazette_number])}${EGGLOBAL?' · '+esc(EG.parts.find(p=>p.key===r[EGI.part_key])?.name||r[EGI.part_key]):''}</div></td>
+    <td>${esc(r[C.ministry])}</td><td>${EGGLOBAL?r[EGI.has_stored_pdf]?'●':'○':r[EGC.stored_pdf_url]?'●':r[EGC.pdf_url]?'○':'—'}</td></tr>`;
   });
-  $('e-out').innerHTML=h+'</tbody></table>';
-  $('e-hint').textContent=`${nf(f.length)} of ${nf(EGROWS.length)} rows`+(f.length>lim?` (first ${nf(lim)} shown; narrow year/search or download CSV for all)`:'');
+  h+='</tbody></table>';
+  if(f.length>lim)h+=`<div class="eg-pages"><button id="e-prev" ${EGPAGE?'':'disabled'}>Previous</button> Page ${nf(EGPAGE+1)} of ${nf(Math.ceil(f.length/lim))} <button id="e-next" ${start+lim<f.length?'':'disabled'}>Next</button></div>`;
+  $('e-out').innerHTML=h;
+  $('e-hint').textContent=`${nf(f.length)} of ${nf(EGROWS.length)} rows`+(f.length?` · showing ${nf(start+1)}–${nf(Math.min(start+lim,f.length))}`:'');
 }
-function egSelect(id){
-  const r=EGROWS.find(x=>x[EGC.id]===id);if(!r)return;
+async function egSelect(id){
+  let r=EGROWS.find(x=>x[EGGLOBAL?EGI.id:EGC.id]===id);if(!r)return;
   EGSELECTED=id;
   document.querySelectorAll('.eg-result').forEach(x=>x.classList.toggle('selected',x.dataset.id===id));
+  if(EGGLOBAL){
+    const key=r[EGI.part_key], year=r[EGI.issued_at].slice(0,4);
+    $('e-preview').innerHTML='<div class="empty">Loading full metadata and PDF link…</div>';
+    try{r=(await shard(`data/eg/${key}__${year}.json`)).find(x=>x[EGC.id]===id)}
+    catch(e){$('e-preview').textContent='Could not load record: '+e.message;return}
+    if(EGSELECTED!==id)return;
+    if(!r){$('e-preview').textContent='Record not found in its section shard.';return}
+  }
   const stored=r[EGC.stored_pdf_url],original=r[EGC.pdf_url];
   const safe=u=>/^https:\/\/(?:storage\.googleapis\.com\/jurisphere-documents-pdfs\/egazette\/|egazette\.gov\.in\/WriteReadData\/)/i.test(u);
   let h=`<h3>${esc(r[EGC.title])}</h3><div class="eg-links">`;
@@ -288,13 +307,30 @@ function egSelect(id){
   h+='<h3>All source metadata</h3><dl class="eg-details">'+EG.cols.map((k,i)=>`<dt>${esc(k.replaceAll('_',' '))}</dt><dd>${esc(r[i])||'—'}</dd>`).join('')+'</dl>';
   $('e-preview').innerHTML=h;
 }
-$('e-out').addEventListener('click',e=>{const row=e.target.closest('.eg-result');if(row)egSelect(row.dataset.id)});
+$('e-out').addEventListener('click',e=>{
+  if(e.target.id==='e-next'||e.target.id==='e-prev'){EGPAGE+=e.target.id==='e-next'?1:-1;drawEg();$('e-out').scrollTo(0,0);return}
+  const row=e.target.closest('.eg-result');if(row)egSelect(row.dataset.id)
+});
 $('e-out').addEventListener('keydown',e=>{if(e.key==='Enter'){const row=e.target.closest('.eg-result');if(row)egSelect(row.dataset.id)}});
-function egCsv(){
+async function egCsv(){
   const f=egFiltered(),q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
-  const csv=[['part_section',...EG.cols].join(',')].concat(f.map(r=>[$('e-ps').selectedOptions[0].textContent.replace(/ \([\d,]+\)$/,''),...r].map(q).join(','))).join('\n');
+  if(EGGLOBAL&&f.length>10000&&!confirm(`Export ${nf(f.length)} full records? This may download many data shards and take a while.`))return;
+  let records;
+  if(EGGLOBAL){
+    const groups=new Map();
+    for(const r of f){const k=r[EGI.part_key]+'__'+r[EGI.issued_at].slice(0,4);if(!groups.has(k))groups.set(k,new Set());groups.get(k).add(r[EGI.id])}
+    $('e-hint').textContent=`Exporting ${nf(f.length)} records from ${nf(groups.size)} shards…`;
+    const found=new Map();
+    try{for(const [key,ids] of groups){
+      for(const r of await shard(`data/eg/${key}.json`))if(ids.has(r[EGC.id]))found.set(r[EGC.id],r)
+    }}catch(e){$('e-hint').textContent='Export failed: '+e.message;return}
+    records=f.map(r=>[EG.parts.find(p=>p.key===r[EGI.part_key])?.name||r[EGI.part_key],found.get(r[EGI.id])]).filter(x=>x[1]);
+    if(records.length!==f.length){$('e-hint').textContent='Export incomplete; please retry.';return}
+  }else records=f.map(r=>[$('e-ps').selectedOptions[0].textContent.replace(/ \([\d,]+\)$/,''),r]);
+  const csv=[['part_section',...EG.cols].join(',')].concat(records.map(([part,r])=>[part,...r].map(q).join(','))).join('\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
   a.download='egazette_'+($('e-ps').value||'all')+'.csv';a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),60000);drawEg();
 }
 
 /* ---------------- notes ---------------- */

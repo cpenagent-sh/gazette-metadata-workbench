@@ -83,4 +83,6 @@ tr:hover td{background:#1b1f28}
 .eg-details dt{color:var(--dim);text-transform:capitalize}
 .eg-details dd{margin:0;overflow-wrap:anywhere}
 .eg-pdf{width:100%;height:55vh;border:1px solid var(--line);background:#fff}
+.eg-pages{display:flex;align-items:center;justify-content:center;gap:12px;padding:12px;color:var(--dim)}
+.eg-pages button:disabled{opacity:.35;cursor:default}
 @media(max-width:860px){.eg-workspace{grid-template-columns:1fr}.eg-preview{position:static;max-height:none}.eg-results{max-height:55vh}}
