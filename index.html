@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive,nosnippet,noimageindex">
+<meta name="referrer" content="no-referrer">
+<title>Sign in</title>
+<style>
+html,body{height:100%;margin:0;background:#0e1014;color:#e9ebf0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
+body{display:flex;align-items:center;justify-content:center}
+form{background:#161921;border:1px solid #2a2f3b;border-radius:12px;padding:26px;width:340px}
+h1{font-size:16px;margin:0 0 14px}
+input[type=password]{width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid #2a2f3b;background:#0e1014;color:inherit;font:inherit}
+button{margin-top:12px;width:100%;padding:10px;border:0;border-radius:8px;background:#c0392b;color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button:disabled{opacity:.6;cursor:wait}
+label{display:block;margin-top:10px;color:#98a1b0;font-size:12.5px}
+#err{color:#e8836a;margin-top:10px;min-height:18px;font-size:12.5px}
+</style>
+</head>
+<body>
+<form id="f" autocomplete="off">
+  <h1>Restricted access</h1>
+  <input type="password" id="pw" placeholder="Passphrase" autofocus autocomplete="current-password">
+  <label><input type="checkbox" id="rem" checked> Remember on this device</label>
+  <button id="go">Unlock</button>
+  <div id="err"></div>
+</form>
+<script>
+(()=>{
+const SITE='gazette-metadata-workbench', SITES=["indian-legislation-explorer", "gazette-metadata-workbench"], ITER=600000, SALT64='DxoeFxodyNWB/28snuN1XA==';
+const enc=s=>new TextEncoder().encode(s);
+const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const unb64=u=>btoa(String.fromCharCode(...u));
+let AES,MAC;const K='vk1';
+async function derive(pw){
+  const km=await crypto.subtle.importKey('raw',enc(pw),'PBKDF2',false,['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:b64(SALT64),iterations:ITER},km,512));
+}
+async function useBits(bits){
+  AES=await crypto.subtle.importKey('raw',bits.slice(0,32),'AES-GCM',false,['decrypt']);
+  MAC=await crypto.subtle.importKey('raw',bits.slice(32),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+}
+async function nameFor(site,rel){
+  const sig=new Uint8Array(await crypto.subtle.sign('HMAC',MAC,enc(site+':'+rel)));
+  const h=[...sig].map(x=>x.toString(16).padStart(2,'0')).join('').slice(0,40);
+  return 'v/'+h.slice(0,2)+'/'+h.slice(2)+'.bin';
+}
+async function dec(buf){
+  const u=new Uint8Array(buf);
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:u.slice(0,12)},AES,u.slice(12));
+  return new Response(new Blob([pt]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+}
+async function loadApp(){
+  const r=await fetch('/'+SITE+'/'+await nameFor(SITE,'__app__'));
+  if(!r.ok) throw new Error('missing');
+  return JSON.parse(new TextDecoder().decode(await dec(await r.arrayBuffer()))).html;
+}
+function install(){
+  const of=window.fetch.bind(window);
+  window.fetch=async(input,init)=>{
+    const url=new URL(typeof input==='string'?input:input.url,location.href);
+    if(url.origin!==location.origin) return of(input,init);
+    const parts=url.pathname.split('/').filter(Boolean);
+    if(!SITES.includes(parts[0])) return of(input,init);
+    const site=parts[0], rel=decodeURIComponent(parts.slice(1).join('/'));
+    const r=await of('/'+site+'/'+await nameFor(site,rel));
+    if(!r.ok) return new Response('not found',{status:404});
+    return new Response(await dec(await r.arrayBuffer()),{status:200,headers:{'content-type':'application/json'}});
+  };
+}
+async function open_(bits,persist){
+  await useBits(bits);
+  const html=await loadApp();
+  if(persist) try{ persist.setItem(K,unb64(bits)) }catch(_){}
+  install();
+  document.open(); document.write(html); document.close();
+}
+async function auto(){
+  const s=localStorage.getItem(K)||sessionStorage.getItem(K);
+  if(!s) return;
+  try{await open_(b64(s))}catch(e){localStorage.removeItem(K);sessionStorage.removeItem(K)}
+}
+document.getElementById('f').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const btn=document.getElementById('go'),err=document.getElementById('err');
+  btn.disabled=true; err.textContent='';
+  try{
+    const bits=await derive(document.getElementById('pw').value.trim());
+    await open_(bits, document.getElementById('rem').checked?localStorage:sessionStorage);
+  }catch(ex){
+    btn.disabled=false; err.textContent='Wrong passphrase.';
+  }
+});
+auto();
+})();
+</script>
+</body>
+</html>
